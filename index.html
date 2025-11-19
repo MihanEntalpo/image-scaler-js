@@ -217,33 +217,39 @@
     height: 32px;
     border-radius: 50%;
     padding: 0;
-    font-size: 16px;
-    background: #e5e7eb;
+    font-size: 18px;
+    background: transparent;
     color: #0f172a;
-    border: 1px solid rgba(15,23,42,0.15);
-    box-shadow: 0 1px 2px rgba(15,23,42,0.2);
+    border: none;
+    box-shadow: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    transition: opacity .2s;
   }
   .ruler-resize-handle {
     position: absolute;
     right: 4px;
     top: 50%;
     transform: translateY(-50%);
-    width: 24px;
+    width: 28px;
     height: 32px;
-    border-radius: 6px;
-    background: rgba(15,23,42,0.1);
-    border: 1px solid rgba(15,23,42,0.2);
+    border-radius: 50%;
+    background: transparent;
+    border: none;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 16px;
     font-weight: 600;
     color: #0f172a;
     cursor: ew-resize;
     touch-action: none;
+    transition: opacity .2s;
+  }
+  .ruler-toolbar button:hover,
+  .ruler-resize-handle:hover {
+    opacity: 0.7;
   }
   .ruler.vertical .ruler-resize-handle {
     left: 50%;
@@ -663,9 +669,13 @@
 
     const cmColor = '#0ea5e9';
     const mmColor = '#94a3b8';
+    const mmTickThickness = Math.max(1, Math.min(2, pxPerMm * 0.3));
+    const cmTickThickness = Math.max(mmTickThickness * 2, Math.min(6, pxPerMm));
+    const mmGap = Math.max(0, pxPerMm - mmTickThickness);
+    const cmGap = Math.max(0, pxPerMm * 10 - cmTickThickness);
     const gradient = rulerState.vertical
-      ? `repeating-linear-gradient(180deg, transparent 0, transparent ${pxPerMm - 1}px, ${mmColor} ${pxPerMm - 1}px, ${mmColor} ${pxPerMm}px), repeating-linear-gradient(180deg, transparent 0, transparent ${pxPerMm * 10 - 1}px, ${cmColor} ${pxPerMm * 10 - 1}px, ${cmColor} ${pxPerMm * 10}px)`
-      : `repeating-linear-gradient(90deg, transparent 0, transparent ${pxPerMm - 1}px, ${mmColor} ${pxPerMm - 1}px, ${mmColor} ${pxPerMm}px), repeating-linear-gradient(90deg, transparent 0, transparent ${pxPerMm * 10 - 1}px, ${cmColor} ${pxPerMm * 10 - 1}px, ${cmColor} ${pxPerMm * 10}px)`;
+      ? `repeating-linear-gradient(180deg, transparent 0, transparent ${mmGap}px, ${mmColor} ${mmGap}px, ${mmColor} ${mmGap + mmTickThickness}px), repeating-linear-gradient(180deg, transparent 0, transparent ${cmGap}px, ${cmColor} ${cmGap}px, ${cmColor} ${cmGap + cmTickThickness}px)`
+      : `repeating-linear-gradient(90deg, transparent 0, transparent ${mmGap}px, ${mmColor} ${mmGap}px, ${mmColor} ${mmGap + mmTickThickness}px), repeating-linear-gradient(90deg, transparent 0, transparent ${cmGap}px, ${cmColor} ${cmGap}px, ${cmColor} ${cmGap + cmTickThickness}px)`;
     rulerScale.style.backgroundImage = gradient;
 
     rulerLabels.innerHTML = '';
