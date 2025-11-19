@@ -15,6 +15,7 @@
     --border: #d0d0d0;
     --frame-bg: #fff;
     --panel-shadow: 0 10px 30px rgba(15,23,42,0.18);
+    --ruler-thickness: 40px;
   }
   * {
     box-sizing: border-box;
@@ -145,8 +146,8 @@
     background: rgba(255,255,255,0.85);
     border-radius: 10px;
     border: 2px solid rgba(12,16,27,0.35);
-    min-width: 120px;
-    min-height: 36px;
+    min-width: var(--ruler-thickness);
+    min-height: var(--ruler-thickness);
     cursor: grab;
     touch-action: none;
     box-shadow: var(--panel-shadow);
@@ -189,7 +190,7 @@
   }
   .ruler-toolbar {
     position: absolute;
-    right: 4px;
+    left: 4px;
     top: 4px;
     display: flex;
     gap: 4px;
@@ -205,11 +206,12 @@
   }
   .ruler-resize-handle {
     position: absolute;
-    bottom: 4px;
     right: 4px;
-    width: 28px;
-    height: 20px;
-    border-radius: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 20px;
+    height: 28px;
+    border-radius: 6px;
     background: rgba(15,23,42,0.1);
     border: 1px solid rgba(15,23,42,0.2);
     display: flex;
@@ -223,6 +225,12 @@
   }
   .ruler:not(.vertical) .ruler-resize-handle {
     cursor: ew-resize;
+  }
+  .ruler.vertical .ruler-resize-handle {
+    top: auto;
+    bottom: 4px;
+    right: 50%;
+    transform: translateX(50%);
   }
   .hint {
     font-size: 13px;
@@ -309,6 +317,7 @@
   const rulerLabels = document.getElementById('rulerLabels');
   const rulerRotateBtn = document.getElementById('rulerRotateBtn');
   const rulerResize = document.getElementById('rulerResize');
+  const RULER_THICKNESS = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ruler-thickness')) || 40;
 
   let frameWidthMM = 210;
   let frameHeightMM = 297;
@@ -388,7 +397,7 @@
   }
 
   function clampRuler(frameWidthPx, frameHeightPx) {
-    const thickness = 46;
+    const thickness = RULER_THICKNESS;
     const lengthPx = rulerState.lengthMm * pxPerMm;
     const halfWidth = rulerState.vertical ? thickness / 2 : lengthPx / 2;
     const halfHeight = rulerState.vertical ? lengthPx / 2 : thickness / 2;
@@ -402,14 +411,27 @@
     ruler.style.top = `${rulerState.y - ruler.offsetHeight / 2}px`;
   }
 
-  function updateRulerGraphics() {
+  function updateRulerGraphics(options = {}) {
     if (ruler.classList.contains('hidden')) return;
-    const thickness = 46;
+    const thickness = RULER_THICKNESS;
+    const { anchorPx = null, anchorAxis = null } = options;
     const lengthPx = Math.max(50, rulerState.lengthMm * pxPerMm);
     const frameRect = frame.getBoundingClientRect();
     const maxLengthPx = (rulerState.vertical ? frameRect.height : frameRect.width) - 20;
     const limitedLengthPx = Math.min(lengthPx, maxLengthPx);
     rulerState.lengthMm = limitedLengthPx / pxPerMm;
+
+    if (anchorPx !== null) {
+      const shouldApplyAnchor = (anchorAxis === 'y' && rulerState.vertical) || (anchorAxis === 'x' && !rulerState.vertical);
+      if (shouldApplyAnchor) {
+        const spanPx = rulerState.lengthMm * pxPerMm;
+        if (rulerState.vertical) {
+          rulerState.y = anchorPx - spanPx / 2;
+        } else {
+          rulerState.x = anchorPx - spanPx / 2;
+        }
+      }
+    }
 
     if (rulerState.vertical) {
       ruler.classList.add('vertical');
@@ -581,7 +603,11 @@
     const start = {
       pointerId: event.pointerId,
       length: rulerState.lengthMm,
-      pos: rulerState.vertical ? event.clientY : event.clientX
+      pos: rulerState.vertical ? event.clientY : event.clientX,
+      anchorAxis: rulerState.vertical ? 'y' : 'x',
+      anchor: rulerState.vertical
+        ? rulerState.y + ruler.offsetHeight / 2
+        : rulerState.x + ruler.offsetWidth / 2
     };
     rulerResize.setPointerCapture(event.pointerId);
     const move = (ev) => {
@@ -589,7 +615,7 @@
       const delta = (rulerState.vertical ? ev.clientY : ev.clientX) - start.pos;
       const deltaMm = delta / pxPerMm;
       rulerState.lengthMm = Math.max(10, start.length + deltaMm);
-      updateRulerGraphics();
+      updateRulerGraphics({ anchorPx: start.anchor, anchorAxis: start.anchorAxis });
     };
     const up = (ev) => {
       if (ev.pointerId !== start.pointerId) return;
