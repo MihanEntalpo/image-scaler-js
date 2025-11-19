@@ -83,6 +83,22 @@
   .custom-size input {
     width: 90px;
   }
+  .margin-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .margin-group span {
+    font-weight: 500;
+  }
+  .margin-group label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .margin-group input {
+    width: 70px;
+  }
   .work-area {
     flex: 1;
     min-height: 0;
@@ -274,6 +290,11 @@
       </div>
     </div>
     <label class="toolbar-group"><input type="checkbox" id="rotatePage"> Повернуть лист на 90°</label>
+    <div class="toolbar-group margin-group">
+      <span>Поля принтера, мм</span>
+      <label>по ширине <input type="number" id="marginWidth" min="0" value="5"></label>
+      <label>по высоте <input type="number" id="marginHeight" min="0" value="5"></label>
+    </div>
     <label class="toolbar-group">
       <button type="button" class="upload-btn" id="uploadBtn">Загрузить изображение</button>
       <input type="file" id="fileInput" accept="image/*" hidden>
@@ -317,6 +338,8 @@
   const customWidthInput = document.getElementById('customWidth');
   const customHeightInput = document.getElementById('customHeight');
   const rotatePage = document.getElementById('rotatePage');
+  const marginWidthInput = document.getElementById('marginWidth');
+  const marginHeightInput = document.getElementById('marginHeight');
   const fileInput = document.getElementById('fileInput');
   const uploadBtn = document.getElementById('uploadBtn');
   const exportBtn = document.getElementById('exportBtn');
@@ -331,6 +354,72 @@
   const rulerRotateBtn = document.getElementById('rulerRotateBtn');
   const rulerResize = document.getElementById('rulerResize');
   const RULER_THICKNESS = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ruler-thickness')) || 40;
+  const PREFERENCES_KEY = 'imageScalerPreferences';
+  const defaultPreferences = {
+    size: 'A4',
+    rotate: false,
+    customWidth: 210,
+    customHeight: 297,
+    marginWidth: 5,
+    marginHeight: 5
+  };
+
+  function loadPreferences() {
+    try {
+      const stored = localStorage.getItem(PREFERENCES_KEY);
+      if (stored) {
+        return { ...defaultPreferences, ...JSON.parse(stored) };
+      }
+    } catch (err) {}
+    return { ...defaultPreferences };
+  }
+
+  function savePreferences() {
+    try {
+      localStorage.setItem(PREFERENCES_KEY, JSON.stringify(preferences));
+    } catch (err) {}
+  }
+
+  const preferences = loadPreferences();
+
+  function ensureSizeOption(value) {
+    const options = Array.from(sizeSelect.options).map((opt) => opt.value);
+    return options.includes(value) ? value : defaultPreferences.size;
+  }
+
+  const rawMarginWidth = preferences.marginWidth;
+  const rawMarginHeight = preferences.marginHeight;
+  let shouldPersistPreferences = false;
+
+  sizeSelect.value = ensureSizeOption(preferences.size);
+  if (preferences.size !== sizeSelect.value) {
+    preferences.size = sizeSelect.value;
+    shouldPersistPreferences = true;
+  }
+  rotatePage.checked = Boolean(preferences.rotate);
+  customWidthInput.value = preferences.customWidth;
+  customHeightInput.value = preferences.customHeight;
+
+  const initialMarginWidth = Math.max(0, Number(rawMarginWidth) || 0);
+  const initialMarginHeight = Math.max(0, Number(rawMarginHeight) || 0);
+  if (rawMarginWidth !== initialMarginWidth) {
+    preferences.marginWidth = initialMarginWidth;
+    shouldPersistPreferences = true;
+  } else {
+    preferences.marginWidth = rawMarginWidth;
+  }
+  if (rawMarginHeight !== initialMarginHeight) {
+    preferences.marginHeight = initialMarginHeight;
+    shouldPersistPreferences = true;
+  } else {
+    preferences.marginHeight = rawMarginHeight;
+  }
+  marginWidthInput.value = preferences.marginWidth;
+  marginHeightInput.value = preferences.marginHeight;
+
+  if (shouldPersistPreferences) {
+    savePreferences();
+  }
 
   let frameWidthMM = 210;
   let frameHeightMM = 297;
@@ -347,6 +436,84 @@
   let gestureStart = null;
   let shiftScaleSession = null;
   let uploadedFileBase = '';
+  const defaultExportFormat = { type: 'image/png', extension: 'png', quality: undefined };
+  let exportFormat = { ...defaultExportFormat };
+
+  const mimeToExtension = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/webp': 'webp',
+    'image/gif': 'gif',
+    'image/bmp': 'bmp',
+    'image/tiff': 'tiff'
+  };
+  const extensionToMime = {
+    png: 'image/png',
+    jpg: 'image/jpeg',
+    jpeg: 'image/jpeg',
+    webp: 'image/webp',
+    gif: 'image/gif',
+    bmp: 'image/bmp',
+    tif: 'image/tiff',
+    tiff: 'image/tiff'
+  };
+  const mimeSupportCache = {};
+  const supportCanvas = document.createElement('canvas');
+
+  function inferExtensionFromName(name) {
+    if (!name) return '';
+    const dotIndex = name.lastIndexOf('.');
+    if (dotIndex === -1) return '';
+    return name.slice(dotIndex + 1).trim().toLowerCase();
+  }
+
+  function isMimeSupported(type) {
+    if (!type) return false;
+    if (mimeSupportCache[type] !== undefined) {
+      return mimeSupportCache[type];
+    }
+    let supported = false;
+    try {
+      supported = supportCanvas.toDataURL(type).startsWith(`data:${type}`);
+    } catch (error) {
+      supported = false;
+    }
+    mimeSupportCache[type] = supported;
+    return supported;
+  }
+
+  function buildExportFormat(type, extension) {
+    const resolvedType = isMimeSupported(type) ? type : defaultExportFormat.type;
+    const resolvedExtension = extension || mimeToExtension[resolvedType] || defaultExportFormat.extension;
+    const needsQuality = resolvedType === 'image/jpeg' || resolvedType === 'image/webp';
+    return {
+      type: resolvedType,
+      extension: resolvedExtension,
+      quality: needsQuality ? 1 : undefined
+    };
+  }
+
+  function resolveExportFormat(file) {
+    if (!file) {
+      return { ...defaultExportFormat };
+    }
+    const normalizedType = (file.type || '').toLowerCase();
+    const extensionFromName = inferExtensionFromName(file.name);
+    if (normalizedType && isMimeSupported(normalizedType)) {
+      const hintedExtension = extensionFromName || mimeToExtension[normalizedType];
+      return buildExportFormat(normalizedType, hintedExtension);
+    }
+    if (extensionFromName && extensionToMime[extensionFromName]) {
+      return buildExportFormat(extensionToMime[extensionFromName], extensionFromName);
+    }
+    return { ...defaultExportFormat };
+  }
+
+  function getMarginValues() {
+    const horizontal = Math.max(0, parseFloat(marginWidthInput.value) || 0);
+    const vertical = Math.max(0, parseFloat(marginHeightInput.value) || 0);
+    return { horizontal, vertical };
+  }
 
   function updateFrameDimensions() {
     let selected = sizeSelect.value;
@@ -362,8 +529,10 @@
     if (rotatePage.checked) {
       [w, h] = [h, w];
     }
-    frameWidthMM = w;
-    frameHeightMM = h;
+    const { horizontal: marginW, vertical: marginH } = getMarginValues();
+    const minDimension = 1;
+    frameWidthMM = Math.max(minDimension, w - marginW * 2);
+    frameHeightMM = Math.max(minDimension, h - marginH * 2);
 
     const availableWidth = workArea.clientWidth - 40;
     const availableHeight = workArea.clientHeight - 40;
@@ -533,6 +702,7 @@
     } else {
       uploadedFileBase = '';
     }
+    exportFormat = resolveExportFormat(file);
     exportBtn.disabled = true;
     recenterBtn.disabled = true;
     const reader = new FileReader();
@@ -570,10 +740,36 @@
     }
   });
 
-  sizeSelect.addEventListener('change', updateFrameDimensions);
-  rotatePage.addEventListener('change', updateFrameDimensions);
-  customWidthInput.addEventListener('input', updateFrameDimensions);
-  customHeightInput.addEventListener('input', updateFrameDimensions);
+  sizeSelect.addEventListener('change', () => {
+    preferences.size = sizeSelect.value;
+    savePreferences();
+    updateFrameDimensions();
+  });
+  rotatePage.addEventListener('change', () => {
+    preferences.rotate = rotatePage.checked;
+    savePreferences();
+    updateFrameDimensions();
+  });
+  customWidthInput.addEventListener('input', () => {
+    preferences.customWidth = parseFloat(customWidthInput.value) || defaultPreferences.customWidth;
+    savePreferences();
+    updateFrameDimensions();
+  });
+  customHeightInput.addEventListener('input', () => {
+    preferences.customHeight = parseFloat(customHeightInput.value) || defaultPreferences.customHeight;
+    savePreferences();
+    updateFrameDimensions();
+  });
+  marginWidthInput.addEventListener('input', () => {
+    preferences.marginWidth = Math.max(0, parseFloat(marginWidthInput.value) || 0);
+    savePreferences();
+    updateFrameDimensions();
+  });
+  marginHeightInput.addEventListener('input', () => {
+    preferences.marginHeight = Math.max(0, parseFloat(marginHeightInput.value) || 0);
+    savePreferences();
+    updateFrameDimensions();
+  });
   window.addEventListener('resize', updateFrameDimensions);
 
   function startShiftScale(event) {
@@ -775,15 +971,17 @@
       ctx.drawImage(photo, sourceX, sourceY, drawWidth, drawHeight, destX, destY, drawWidth, drawHeight);
     }
 
+    const { type, extension, quality } = exportFormat;
     canvas.toBlob((blob) => {
+      if (!blob) return;
       const link = document.createElement('a');
       const formatLabel = getFormatLabel();
       const downloadBase = uploadedFileBase || 'scaled-photo';
-      link.download = `${downloadBase}_${formatLabel}.png`;
+      link.download = `${downloadBase}_${formatLabel}.${extension}`;
       link.href = URL.createObjectURL(blob);
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    }, 'image/png', 1);
+    }, type, quality);
   }
 
   exportBtn.addEventListener('click', exportImage);
