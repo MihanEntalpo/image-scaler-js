@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Калибратор размеров фото</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    color-scheme: light dark;
+    --toolbar-bg: #f5f5f7;
+    --accent: #ff7a18;
+    --border: #d0d0d0;
+    --frame-bg: #fff;
+    --panel-shadow: 0 10px 30px rgba(15,23,42,0.18);
+  }
+  * {
+    box-sizing: border-box;
+  }
+  body {
+    margin: 0;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #eceff1;
+    color: #111;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px 20px;
+    background: var(--toolbar-bg);
+    align-items: center;
+    box-shadow: inset 0 -1px rgba(0,0,0,0.1);
+    z-index: 5;
+  }
+  .toolbar label,
+  .toolbar button,
+  .toolbar select,
+  .toolbar input[type="number"] {
+    font-size: 14px;
+  }
+  select, input[type="number"], button {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 10px;
+    background: #fff;
+    min-height: 36px;
+  }
+  button {
+    background: var(--accent);
+    border: none;
+    color: #fff;
+    font-weight: 600;
+    cursor: pointer;
+    transition: filter .2s;
+  }
+  button:disabled {
+    opacity: .5;
+    cursor: not-allowed;
+  }
+  button:not(:disabled):hover {
+    filter: brightness(0.9);
+  }
+  .upload-btn {
+    background: #2563eb;
+  }
+  .toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .custom-size {
+    display: none;
+    gap: 8px;
+    align-items: center;
+  }
+  .custom-size input {
+    width: 90px;
+  }
+  .work-area {
+    flex: 1;
+    min-height: 0;
+    position: relative;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle at 20% 20%, rgba(255,255,255,0.9), #c9d5e1);
+  }
+  .frame {
+    position: relative;
+    background: var(--frame-bg);
+    box-shadow: 0 0 0 2000px rgba(12,16,27,0.45);
+    border: 2px solid #222;
+    overflow: hidden;
+    touch-action: none;
+  }
+  .frame::before {
+    content: '';
+    position: absolute;
+    inset: 12px;
+    border: 1px dashed rgba(0,0,0,0.1);
+    pointer-events: none;
+  }
+  .photo-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    will-change: transform;
+    border: 2px solid rgba(255,255,255,0.8);
+    box-shadow: 0 15px 40px rgba(15,23,42,0.45);
+    touch-action: none;
+  }
+  .photo-wrapper.hidden {
+    display: none;
+  }
+  .photo-wrapper img {
+    width: 100%;
+    height: 100%;
+    display: block;
+    pointer-events: none;
+    user-select: none;
+  }
+  .corner-handle {
+    width: 14px;
+    height: 14px;
+    border-radius: 4px;
+    background: #fff;
+    border: 2px solid #111;
+    position: absolute;
+    margin: -8px;
+    pointer-events: none;
+  }
+  .corner-handle.nw { top: 0; left: 0; }
+  .corner-handle.ne { top: 0; right: 0; }
+  .corner-handle.sw { bottom: 0; left: 0; }
+  .corner-handle.se { bottom: 0; right: 0; }
+  .ruler {
+    position: absolute;
+    background: rgba(255,255,255,0.85);
+    border-radius: 10px;
+    border: 2px solid rgba(12,16,27,0.35);
+    min-width: 120px;
+    min-height: 36px;
+    cursor: grab;
+    touch-action: none;
+    box-shadow: var(--panel-shadow);
+  }
+  .ruler.hidden {
+    display: none;
+  }
+  .ruler:active {
+    cursor: grabbing;
+  }
+  .ruler-content {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+  .ruler-scale {
+    position: absolute;
+    inset: 0;
+    background-size: 10px 100%;
+    pointer-events: none;
+  }
+  .ruler-labels {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    font-size: 12px;
+    color: #111;
+    font-weight: 600;
+  }
+  .ruler-labels span {
+    position: absolute;
+    top: 2px;
+  }
+  .ruler.vertical .ruler-labels span {
+    writing-mode: vertical-rl;
+    transform: rotate(180deg);
+    top: auto;
+    right: 2px;
+  }
+  .ruler-toolbar {
+    position: absolute;
+    right: 4px;
+    top: 4px;
+    display: flex;
+    gap: 4px;
+    z-index: 2;
+  }
+  .ruler-toolbar button {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    padding: 0;
+    font-size: 16px;
+    background: rgba(37,99,235,0.85);
+  }
+  .ruler-resize-handle {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    width: 28px;
+    height: 20px;
+    border-radius: 10px;
+    background: rgba(15,23,42,0.1);
+    border: 1px solid rgba(15,23,42,0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    color: #0f172a;
+    cursor: ns-resize;
+    touch-action: none;
+  }
+  .ruler:not(.vertical) .ruler-resize-handle {
+    cursor: ew-resize;
+  }
+  .hint {
+    font-size: 13px;
+    color: #425466;
+  }
+  @media (max-width: 720px) {
+    .toolbar {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+    .work-area {
+      padding: 10px;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <label for="sizeSelect">Размер листа</label>
+      <select id="sizeSelect">
+        <option value="A5">A5 (148×210)</option>
+        <option value="A4" selected>A4 (210×297)</option>
+        <option value="A3">A3 (297×420)</option>
+        <option value="custom">Произвольный</option>
+      </select>
+      <div class="custom-size" id="customSizeInputs">
+        <label>Ширина мм <input type="number" id="customWidth" min="30" value="210"></label>
+        <label>Высота мм <input type="number" id="customHeight" min="30" value="297"></label>
+      </div>
+    </div>
+    <label class="toolbar-group"><input type="checkbox" id="rotatePage"> Повернуть лист на 90°</label>
+    <label class="toolbar-group">
+      <button type="button" class="upload-btn" id="uploadBtn">Загрузить изображение</button>
+      <input type="file" id="fileInput" accept="image/*" hidden>
+    </label>
+    <button id="exportBtn" disabled>Экспорт</button>
+    <span class="hint">Масштабируйте и переместите фото, затем пользуйтесь линейкой</span>
+  </div>
+  <div class="work-area" id="workArea">
+    <div class="frame" id="paperFrame">
+      <div class="photo-wrapper hidden" id="photoWrapper">
+        <img id="photo" alt="Превью" draggable="false" />
+        <div class="corner-handle nw"></div>
+        <div class="corner-handle ne"></div>
+        <div class="corner-handle sw"></div>
+        <div class="corner-handle se"></div>
+      </div>
+      <div class="ruler hidden" id="ruler">
+        <div class="ruler-toolbar">
+          <button type="button" title="Повернуть" id="rulerRotateBtn">⟳</button>
+        </div>
+        <div class="ruler-content">
+          <div class="ruler-scale" id="rulerScale"></div>
+          <div class="ruler-labels" id="rulerLabels"></div>
+        </div>
+        <div class="ruler-resize-handle" id="rulerResize">⇔</div>
+      </div>
+    </div>
+  </div>
+<script src="https://cdn.jsdelivr.net/npm/interactjs/dist/interact.min.js"></script>
+<script>
+(function() {
+  const mmToPx = 3.7795275591;
+  const sizes = {
+    A5: { width: 148, height: 210 },
+    A4: { width: 210, height: 297 },
+    A3: { width: 297, height: 420 }
+  };
+  const sizeSelect = document.getElementById('sizeSelect');
+  const customSize = document.getElementById('customSizeInputs');
+  const customWidthInput = document.getElementById('customWidth');
+  const customHeightInput = document.getElementById('customHeight');
+  const rotatePage = document.getElementById('rotatePage');
+  const fileInput = document.getElementById('fileInput');
+  const uploadBtn = document.getElementById('uploadBtn');
+  const exportBtn = document.getElementById('exportBtn');
+  const workArea = document.getElementById('workArea');
+  const frame = document.getElementById('paperFrame');
+  const photoWrapper = document.getElementById('photoWrapper');
+  const photo = document.getElementById('photo');
+  const ruler = document.getElementById('ruler');
+  const rulerScale = document.getElementById('rulerScale');
+  const rulerLabels = document.getElementById('rulerLabels');
+  const rulerRotateBtn = document.getElementById('rulerRotateBtn');
+  const rulerResize = document.getElementById('rulerResize');
+
+  let frameWidthMM = 210;
+  let frameHeightMM = 297;
+  let frameScale = 1;
+  let pxPerMm = mmToPx;
+  let photoState = { x: 0, y: 0, width: 0, height: 0 };
+  let photoNatural = { width: 0, height: 0 };
+  let rulerState = {
+    x: 0,
+    y: 0,
+    lengthMm: 150,
+    vertical: false
+  };
+  let gestureStart = null;
+
+  function updateFrameDimensions() {
+    let selected = sizeSelect.value;
+    let w, h;
+    if (selected === 'custom') {
+      customSize.style.display = 'flex';
+      w = parseFloat(customWidthInput.value) || 210;
+      h = parseFloat(customHeightInput.value) || 297;
+    } else {
+      customSize.style.display = 'none';
+      ({ width: w, height: h } = sizes[selected]);
+    }
+    if (rotatePage.checked) {
+      [w, h] = [h, w];
+    }
+    frameWidthMM = w;
+    frameHeightMM = h;
+
+    const availableWidth = workArea.clientWidth - 40;
+    const availableHeight = workArea.clientHeight - 40;
+    const baseWidthPx = frameWidthMM * mmToPx;
+    const baseHeightPx = frameHeightMM * mmToPx;
+    frameScale = Math.min(availableWidth / baseWidthPx, availableHeight / baseHeightPx, 1);
+    const displayWidth = baseWidthPx * frameScale;
+    const displayHeight = baseHeightPx * frameScale;
+    pxPerMm = displayWidth / frameWidthMM;
+
+    frame.style.width = `${displayWidth}px`;
+    frame.style.height = `${displayHeight}px`;
+
+    clampPhotoWithinFrame();
+    positionRulerDefaultsIfNeeded(displayWidth, displayHeight);
+    updateRulerGraphics();
+  }
+
+  function clampPhotoWithinFrame() {
+    if (photoWrapper.classList.contains('hidden')) return;
+    const frameRect = frame.getBoundingClientRect();
+    const maxX = frameRect.width - photoState.width;
+    const maxY = frameRect.height - photoState.height;
+    if (photoState.width < frameRect.width) {
+      photoState.x = Math.max(Math.min(photoState.x, maxX), 0);
+    }
+    if (photoState.height < frameRect.height) {
+      photoState.y = Math.max(Math.min(photoState.y, maxY), 0);
+    }
+    applyPhotoState();
+  }
+
+  function applyPhotoState() {
+    photoWrapper.style.width = `${photoState.width}px`;
+    photoWrapper.style.height = `${photoState.height}px`;
+    photoWrapper.style.transform = `translate(${photoState.x}px, ${photoState.y}px)`;
+  }
+
+  function positionRulerDefaultsIfNeeded(frameWidthPx, frameHeightPx) {
+    if (!rulerState.x && !rulerState.y) {
+      rulerState.x = frameWidthPx / 2;
+      rulerState.y = frameHeightPx / 2;
+      rulerState.lengthMm = frameWidthMM * 0.6;
+    }
+    clampRuler(frameWidthPx, frameHeightPx);
+  }
+
+  function clampRuler(frameWidthPx, frameHeightPx) {
+    const thickness = 46;
+    const lengthPx = rulerState.lengthMm * pxPerMm;
+    const halfWidth = rulerState.vertical ? thickness / 2 : lengthPx / 2;
+    const halfHeight = rulerState.vertical ? lengthPx / 2 : thickness / 2;
+    rulerState.x = Math.min(Math.max(halfWidth, rulerState.x), frameWidthPx - halfWidth);
+    rulerState.y = Math.min(Math.max(halfHeight, rulerState.y), frameHeightPx - halfHeight);
+    updateRulerPosition();
+  }
+
+  function updateRulerPosition() {
+    ruler.style.left = `${rulerState.x - ruler.offsetWidth / 2}px`;
+    ruler.style.top = `${rulerState.y - ruler.offsetHeight / 2}px`;
+  }
+
+  function updateRulerGraphics() {
+    if (ruler.classList.contains('hidden')) return;
+    const thickness = 46;
+    const lengthPx = Math.max(50, rulerState.lengthMm * pxPerMm);
+    const frameRect = frame.getBoundingClientRect();
+    const maxLengthPx = (rulerState.vertical ? frameRect.height : frameRect.width) - 20;
+    const limitedLengthPx = Math.min(lengthPx, maxLengthPx);
+    rulerState.lengthMm = limitedLengthPx / pxPerMm;
+
+    if (rulerState.vertical) {
+      ruler.classList.add('vertical');
+      ruler.style.width = `${thickness}px`;
+      ruler.style.height = `${limitedLengthPx}px`;
+    } else {
+      ruler.classList.remove('vertical');
+      ruler.style.width = `${limitedLengthPx}px`;
+      ruler.style.height = `${thickness}px`;
+    }
+
+    const cmColor = '#0ea5e9';
+    const mmColor = '#94a3b8';
+    const gradient = rulerState.vertical
+      ? `repeating-linear-gradient(180deg, transparent 0, transparent ${pxPerMm - 1}px, ${mmColor} ${pxPerMm - 1}px, ${mmColor} ${pxPerMm}px), repeating-linear-gradient(180deg, transparent 0, transparent ${pxPerMm * 10 - 1}px, ${cmColor} ${pxPerMm * 10 - 1}px, ${cmColor} ${pxPerMm * 10}px)`
+      : `repeating-linear-gradient(90deg, transparent 0, transparent ${pxPerMm - 1}px, ${mmColor} ${pxPerMm - 1}px, ${mmColor} ${pxPerMm}px), repeating-linear-gradient(90deg, transparent 0, transparent ${pxPerMm * 10 - 1}px, ${cmColor} ${pxPerMm * 10 - 1}px, ${cmColor} ${pxPerMm * 10}px)`;
+    rulerScale.style.backgroundImage = gradient;
+
+    rulerLabels.innerHTML = '';
+    const cmCount = Math.floor(rulerState.lengthMm / 10);
+    for (let i = 0; i <= cmCount; i++) {
+      const span = document.createElement('span');
+      span.textContent = i.toString();
+      if (rulerState.vertical) {
+        span.style.bottom = `${i * 10 * pxPerMm - 4}px`;
+      } else {
+        span.style.left = `${i * 10 * pxPerMm + 4}px`;
+      }
+      rulerLabels.appendChild(span);
+    }
+    clampRuler(frameRect.width, frameRect.height);
+  }
+
+  function resetRuler() {
+    rulerState.x = 0;
+    rulerState.y = 0;
+    rulerState.lengthMm = frameWidthMM * 0.6;
+    rulerState.vertical = false;
+    ruler.classList.remove('hidden');
+    updateRulerGraphics();
+  }
+
+  function handleFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      photo.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  photo.addEventListener('load', () => {
+    const frameRect = frame.getBoundingClientRect();
+    photoNatural.width = photo.naturalWidth;
+    photoNatural.height = photo.naturalHeight;
+    const ratio = photoNatural.width / photoNatural.height;
+    const frameRatio = frameRect.width / frameRect.height;
+    let width, height;
+    if (frameRatio > ratio) {
+      height = frameRect.height;
+      width = height * ratio;
+    } else {
+      width = frameRect.width;
+      height = width / ratio;
+    }
+    photoState = {
+      x: (frameRect.width - width) / 2,
+      y: (frameRect.height - height) / 2,
+      width,
+      height
+    };
+    photoWrapper.classList.remove('hidden');
+    applyPhotoState();
+    exportBtn.disabled = false;
+    ruler.classList.remove('hidden');
+    resetRuler();
+  });
+
+  uploadBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+
+  sizeSelect.addEventListener('change', updateFrameDimensions);
+  rotatePage.addEventListener('change', updateFrameDimensions);
+  customWidthInput.addEventListener('input', updateFrameDimensions);
+  customHeightInput.addEventListener('input', updateFrameDimensions);
+  window.addEventListener('resize', updateFrameDimensions);
+
+  interact(photoWrapper)
+    .draggable({
+      listeners: {
+        move(event) {
+          photoState.x += event.dx;
+          photoState.y += event.dy;
+          applyPhotoState();
+        }
+      }
+    })
+    .resizable({
+      edges: { top: true, left: true, bottom: true, right: true },
+      margin: 12,
+      modifiers: [
+        interact.modifiers.aspectRatio({ ratio: 'preserve' }),
+        interact.modifiers.restrictSize({ min: { width: 50, height: 50 } })
+      ],
+      listeners: {
+        move(event) {
+          photoState.x += event.deltaRect.left;
+          photoState.y += event.deltaRect.top;
+          photoState.width = event.rect.width;
+          photoState.height = event.rect.height;
+          applyPhotoState();
+        }
+      }
+    })
+    .gesturable({
+      listeners: {
+        start(event) {
+          gestureStart = { width: photoState.width, height: photoState.height };
+        },
+        move(event) {
+          if (!gestureStart) return;
+          const newWidth = Math.max(50, gestureStart.width * event.scale);
+          const newHeight = newWidth * (gestureStart.height / gestureStart.width);
+          const dx = (newWidth - photoState.width) / 2;
+          const dy = (newHeight - photoState.height) / 2;
+          photoState.width = newWidth;
+          photoState.height = newHeight;
+          photoState.x -= dx;
+          photoState.y -= dy;
+          applyPhotoState();
+        },
+        end() { gestureStart = null; }
+      }
+    });
+
+  let dragStart = null;
+  ruler.addEventListener('pointerdown', (event) => {
+    if (event.target === rulerResize || event.target === rulerRotateBtn) return;
+    event.preventDefault();
+    ruler.setPointerCapture(event.pointerId);
+    dragStart = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      stateX: rulerState.x,
+      stateY: rulerState.y
+    };
+  });
+  ruler.addEventListener('pointermove', (event) => {
+    if (!dragStart || dragStart.pointerId !== event.pointerId) return;
+    const frameRect = frame.getBoundingClientRect();
+    rulerState.x = dragStart.stateX + event.clientX - dragStart.x;
+    rulerState.y = dragStart.stateY + event.clientY - dragStart.y;
+    clampRuler(frameRect.width, frameRect.height);
+    updateRulerPosition();
+  });
+  ruler.addEventListener('pointerup', resetRulerDrag);
+  ruler.addEventListener('pointercancel', resetRulerDrag);
+
+  function resetRulerDrag(event) {
+    if (!dragStart || (event && dragStart.pointerId !== event.pointerId)) return;
+    ruler.releasePointerCapture(dragStart.pointerId);
+    dragStart = null;
+  }
+
+  rulerResize.addEventListener('pointerdown', (event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    const start = {
+      pointerId: event.pointerId,
+      length: rulerState.lengthMm,
+      pos: rulerState.vertical ? event.clientY : event.clientX
+    };
+    rulerResize.setPointerCapture(event.pointerId);
+    const move = (ev) => {
+      if (ev.pointerId !== start.pointerId) return;
+      const delta = (rulerState.vertical ? ev.clientY : ev.clientX) - start.pos;
+      const deltaMm = delta / pxPerMm;
+      rulerState.lengthMm = Math.max(10, start.length + deltaMm);
+      updateRulerGraphics();
+    };
+    const up = (ev) => {
+      if (ev.pointerId !== start.pointerId) return;
+      rulerResize.releasePointerCapture(start.pointerId);
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  });
+
+  rulerRotateBtn.addEventListener('click', () => {
+    rulerState.vertical = !rulerState.vertical;
+    rulerResize.textContent = rulerState.vertical ? '⇕' : '⇔';
+    updateRulerGraphics();
+  });
+
+  async function exportImage() {
+    if (photoWrapper.classList.contains('hidden')) return;
+    const frameRect = frame.getBoundingClientRect();
+    const ratio = photoNatural.width / photoState.width;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(frameRect.width * ratio));
+    canvas.height = Math.max(1, Math.round(frameRect.height * ratio));
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    const visibleWidth = Math.max(0, Math.min(frameRect.width, photoState.x + photoState.width) - Math.max(0, photoState.x));
+    const visibleHeight = Math.max(0, Math.min(frameRect.height, photoState.y + photoState.height) - Math.max(0, photoState.y));
+    if (visibleWidth > 0 && visibleHeight > 0) {
+      const sourceX = Math.max(0, -photoState.x) * ratio;
+      const sourceY = Math.max(0, -photoState.y) * ratio;
+      const destX = Math.max(0, photoState.x) * ratio;
+      const destY = Math.max(0, photoState.y) * ratio;
+      const drawWidth = visibleWidth * ratio;
+      const drawHeight = visibleHeight * ratio;
+      ctx.drawImage(photo, sourceX, sourceY, drawWidth, drawHeight, destX, destY, drawWidth, drawHeight);
+    }
+
+    canvas.toBlob((blob) => {
+      const link = document.createElement('a');
+      link.download = 'scaled-photo.png';
+      link.href = URL.createObjectURL(blob);
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    }, 'image/png', 1);
+  }
+
+  exportBtn.addEventListener('click', exportImage);
+
+  updateFrameDimensions();
+})();
+</script>
+</body>
+</html>
