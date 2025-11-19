@@ -22,6 +22,8 @@
   const photo = document.getElementById('photo');
   const ruler = document.getElementById('ruler');
   const rulerScale = document.getElementById('rulerScale');
+  const rulerCanvas = document.getElementById('rulerCanvas');
+  const rulerCtx = rulerCanvas.getContext('2d');
   const rulerLabels = document.getElementById('rulerLabels');
   const rulerRotateBtn = document.getElementById('rulerRotateBtn');
   const rulerResize = document.getElementById('rulerResize');
@@ -272,6 +274,61 @@
     ruler.classList.toggle('vertical', rulerState.vertical);
   }
 
+  function drawRulerTicks(lengthPx) {
+    const canvasWidth = rulerState.vertical ? RULER_THICKNESS : lengthPx;
+    const canvasHeight = rulerState.vertical ? lengthPx : RULER_THICKNESS;
+    rulerCanvas.style.width = `${canvasWidth}px`;
+    rulerCanvas.style.height = `${canvasHeight}px`;
+    const pixelWidth = Math.max(1, Math.round(canvasWidth));
+    const pixelHeight = Math.max(1, Math.round(canvasHeight));
+    if (rulerCanvas.width !== pixelWidth || rulerCanvas.height !== pixelHeight) {
+      rulerCanvas.width = pixelWidth;
+      rulerCanvas.height = pixelHeight;
+    }
+    rulerCtx.clearRect(0, 0, rulerCanvas.width, rulerCanvas.height);
+
+    const axisPixels = rulerState.vertical ? rulerCanvas.height : rulerCanvas.width;
+    const crossPixels = rulerState.vertical ? rulerCanvas.width : rulerCanvas.height;
+    const axisPxPerMm = axisPixels / Math.max(1, rulerState.lengthMm);
+    const mmColor = 'rgba(15,23,42,0.35)';
+    const cmColor = 'rgba(15,23,42,0.95)';
+    const mmLengthPx = crossPixels / 2;
+    const cmLengthPx = crossPixels;
+
+    rulerCtx.strokeStyle = mmColor;
+    rulerCtx.lineWidth = 1;
+    const mmTotal = Math.floor(rulerState.lengthMm);
+    for (let i = 0; i <= mmTotal; i++) {
+      if (i % 10 === 0) continue;
+      const offset = Math.round(i * axisPxPerMm) + 0.5;
+      rulerCtx.beginPath();
+      if (rulerState.vertical) {
+        rulerCtx.moveTo(0, offset);
+        rulerCtx.lineTo(mmLengthPx, offset);
+      } else {
+        rulerCtx.moveTo(offset, 0);
+        rulerCtx.lineTo(offset, mmLengthPx);
+      }
+      rulerCtx.stroke();
+    }
+
+    rulerCtx.strokeStyle = cmColor;
+    rulerCtx.lineWidth = 2;
+    const cmTotal = Math.floor(rulerState.lengthMm / 10);
+    for (let i = 0; i <= cmTotal; i++) {
+      const offset = Math.round(i * 10 * axisPxPerMm) + 0.5;
+      rulerCtx.beginPath();
+      if (rulerState.vertical) {
+        rulerCtx.moveTo(0, offset);
+        rulerCtx.lineTo(cmLengthPx, offset);
+      } else {
+        rulerCtx.moveTo(offset, 0);
+        rulerCtx.lineTo(offset, cmLengthPx);
+      }
+      rulerCtx.stroke();
+    }
+  }
+
   function updateRulerGraphics({ startEdgePx, requestedLengthPx } = {}) {
     const frameRect = frame.getBoundingClientRect();
     const availableWidth = frameRect.width;
@@ -291,17 +348,7 @@
       }
     }
 
-    const mmInPx = pxPerMm;
-    const cmGap = 10 * mmInPx;
-    const mmGap = mmInPx;
-    const mmColor = 'rgba(15,23,42,0.4)';
-    const cmColor = 'rgba(15,23,42,0.9)';
-    const mmTickThickness = 1;
-    const cmTickThickness = 2;
-    const gradient = rulerState.vertical
-      ? `repeating-linear-gradient(180deg, transparent 0, transparent ${cmGap}px, ${cmColor} ${cmGap}px, ${cmColor} ${cmGap + cmTickThickness}px)`
-      : `repeating-linear-gradient(90deg, transparent 0, transparent ${mmGap}px, ${mmColor} ${mmGap}px, ${mmColor} ${mmGap + mmTickThickness}px), repeating-linear-gradient(90deg, transparent 0, transparent ${cmGap}px, ${cmColor} ${cmGap}px, ${cmColor} ${cmGap + cmTickThickness}px)`;
-    rulerScale.style.backgroundImage = gradient;
+    drawRulerTicks(lengthPx);
 
     rulerLabels.innerHTML = '';
     const cmCount = Math.floor(rulerState.lengthMm / 10);

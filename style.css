@@ -173,8 +173,12 @@ button:not(:disabled):hover {
 .ruler-scale {
   position: absolute;
   inset: 0;
-  background-size: 10px 100%;
   pointer-events: none;
+}
+.ruler-scale canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 .ruler-labels {
   position: absolute;
