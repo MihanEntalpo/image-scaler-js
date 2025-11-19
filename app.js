@@ -364,6 +364,7 @@
       rulerLabels.appendChild(span);
     }
     clampRuler(frameRect.width, frameRect.height);
+    updateRulerPosition();
   }
 
   function resetRuler() {
