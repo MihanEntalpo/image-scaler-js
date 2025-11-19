@@ -190,25 +190,27 @@
   }
   .ruler-toolbar {
     position: absolute;
-    left: 4px;
-    top: 4px;
-    display: flex;
-    gap: 4px;
-    z-index: 2;
-  }
-  .ruler-toolbar button {
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    padding: 0;
-    font-size: 16px;
-    background: rgba(37,99,235,0.85);
-  }
-  .ruler-resize-handle {
-    position: absolute;
     right: 4px;
     top: 50%;
     transform: translateY(-50%);
+    display: flex;
+    z-index: 2;
+  }
+  .ruler-toolbar button {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    padding: 0;
+    font-size: 16px;
+    background: #e5e7eb;
+    color: #0f172a;
+    border: 1px solid rgba(15,23,42,0.15);
+    box-shadow: 0 1px 2px rgba(15,23,42,0.2);
+  }
+  .ruler-resize-handle {
+    position: absolute;
+    left: 4px;
+    top: 4px;
     width: 20px;
     height: 28px;
     border-radius: 6px;
@@ -227,6 +229,12 @@
     cursor: ew-resize;
   }
   .ruler.vertical .ruler-resize-handle {
+    top: 4px;
+    bottom: auto;
+    left: 4px;
+    right: auto;
+  }
+  .ruler.vertical .ruler-toolbar {
     top: auto;
     bottom: 4px;
     right: 50%;
@@ -332,6 +340,7 @@
     vertical: false
   };
   let gestureStart = null;
+  let shiftScaleSession = null;
 
   function updateFrameDimensions() {
     let selected = sizeSelect.value;
@@ -519,13 +528,72 @@
   customHeightInput.addEventListener('input', updateFrameDimensions);
   window.addEventListener('resize', updateFrameDimensions);
 
+  function startShiftScale(event) {
+    const frameRect = frame.getBoundingClientRect();
+    const centerX = frameRect.width / 2;
+    const centerY = frameRect.height / 2;
+    const pointerX = event.clientX - frameRect.left;
+    const pointerY = event.clientY - frameRect.top;
+    const distance = Math.max(10, Math.hypot(pointerX - centerX, pointerY - centerY));
+    shiftScaleSession = {
+      width: photoState.width,
+      height: photoState.height,
+      x: photoState.x,
+      y: photoState.y,
+      anchorX: centerX,
+      anchorY: centerY,
+      pointerDist: distance
+    };
+  }
+
+  function applyShiftScale(event) {
+    if (!shiftScaleSession) return false;
+    const frameRect = frame.getBoundingClientRect();
+    const centerX = shiftScaleSession.anchorX;
+    const centerY = shiftScaleSession.anchorY;
+    const pointerX = event.clientX - frameRect.left;
+    const pointerY = event.clientY - frameRect.top;
+    const distance = Math.max(1, Math.hypot(pointerX - centerX, pointerY - centerY));
+    let factor = distance / shiftScaleSession.pointerDist;
+    if (!isFinite(factor) || factor <= 0) {
+      factor = 1;
+    }
+    let newWidth = Math.max(50, shiftScaleSession.width * factor);
+    const appliedFactor = newWidth / shiftScaleSession.width;
+    const newHeight = shiftScaleSession.height * appliedFactor;
+    photoState.width = newWidth;
+    photoState.height = newHeight;
+    const offsetX = centerX - shiftScaleSession.x;
+    const offsetY = centerY - shiftScaleSession.y;
+    photoState.x = centerX - offsetX * appliedFactor;
+    photoState.y = centerY - offsetY * appliedFactor;
+    applyPhotoState();
+    return true;
+  }
+
   interact(photoWrapper)
     .draggable({
       listeners: {
+        start(event) {
+          if (event.shiftKey) {
+            startShiftScale(event);
+          }
+        },
         move(event) {
+          if (event.shiftKey && !shiftScaleSession) {
+            startShiftScale(event);
+          }
+          if (event.shiftKey && shiftScaleSession) {
+            applyShiftScale(event);
+            return;
+          }
+          shiftScaleSession = null;
           photoState.x += event.dx;
           photoState.y += event.dy;
           applyPhotoState();
+        },
+        end() {
+          shiftScaleSession = null;
         }
       }
     })
