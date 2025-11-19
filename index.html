@@ -183,10 +183,10 @@
     top: 2px;
   }
   .ruler.vertical .ruler-labels span {
-    writing-mode: vertical-rl;
-    transform: rotate(180deg);
+    writing-mode: horizontal-tb;
+    transform: none;
     top: auto;
-    right: 2px;
+    left: 6px;
   }
   .ruler-toolbar {
     position: absolute;
@@ -197,8 +197,8 @@
     z-index: 2;
   }
   .ruler-toolbar button {
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     border-radius: 50%;
     padding: 0;
     font-size: 16px;
@@ -206,13 +206,17 @@
     color: #0f172a;
     border: 1px solid rgba(15,23,42,0.15);
     box-shadow: 0 1px 2px rgba(15,23,42,0.2);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   .ruler-resize-handle {
     position: absolute;
-    left: 4px;
-    top: 4px;
-    width: 20px;
-    height: 28px;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 24px;
+    height: 32px;
     border-radius: 6px;
     background: rgba(15,23,42,0.1);
     border: 1px solid rgba(15,23,42,0.2);
@@ -222,23 +226,21 @@
     font-size: 12px;
     font-weight: 600;
     color: #0f172a;
-    cursor: ns-resize;
+    cursor: ew-resize;
     touch-action: none;
   }
-  .ruler:not(.vertical) .ruler-resize-handle {
-    cursor: ew-resize;
-  }
   .ruler.vertical .ruler-resize-handle {
-    top: 4px;
-    bottom: auto;
-    left: 4px;
-    right: auto;
+    left: 50%;
+    top: auto;
+    bottom: 4px;
+    transform: translateX(-50%);
+    cursor: ns-resize;
   }
   .ruler.vertical .ruler-toolbar {
     top: auto;
     bottom: 4px;
-    right: 50%;
-    transform: translateX(50%);
+    right: 4px;
+    transform: none;
   }
   .hint {
     font-size: 13px;
@@ -275,8 +277,9 @@
       <button type="button" class="upload-btn" id="uploadBtn">Загрузить изображение</button>
       <input type="file" id="fileInput" accept="image/*" hidden>
     </label>
+    <button id="recenterBtn" disabled>Картинку в центр</button>
     <button id="exportBtn" disabled>Экспорт</button>
-    <span class="hint">Масштабируйте и переместите фото, затем пользуйтесь линейкой</span>
+    <span class="hint">Масштабируйте фото за углы, либо за любое место с зажатой кнопкой shift, либо двумя пальцами на тач-скрине, перемещайте зажав за любое место картинки, используйте линейку для определения масштаба элементов</span>
   </div>
   <div class="work-area" id="workArea">
     <div class="frame" id="paperFrame">
@@ -316,6 +319,7 @@
   const fileInput = document.getElementById('fileInput');
   const uploadBtn = document.getElementById('uploadBtn');
   const exportBtn = document.getElementById('exportBtn');
+  const recenterBtn = document.getElementById('recenterBtn');
   const workArea = document.getElementById('workArea');
   const frame = document.getElementById('paperFrame');
   const photoWrapper = document.getElementById('photoWrapper');
@@ -341,6 +345,7 @@
   };
   let gestureStart = null;
   let shiftScaleSession = null;
+  let uploadedFileBase = '';
 
   function updateFrameDimensions() {
     let selected = sizeSelect.value;
@@ -396,6 +401,28 @@
     photoWrapper.style.transform = `translate(${photoState.x}px, ${photoState.y}px)`;
   }
 
+  function fitPhotoToFrame() {
+    if (!photoNatural.width || !photoNatural.height) return;
+    const frameRect = frame.getBoundingClientRect();
+    const ratio = photoNatural.width / photoNatural.height;
+    const frameRatio = frameRect.width / frameRect.height;
+    let width, height;
+    if (frameRatio > ratio) {
+      height = frameRect.height;
+      width = height * ratio;
+    } else {
+      width = frameRect.width;
+      height = width / ratio;
+    }
+    photoState = {
+      x: (frameRect.width - width) / 2,
+      y: (frameRect.height - height) / 2,
+      width,
+      height
+    };
+    applyPhotoState();
+  }
+
   function positionRulerDefaultsIfNeeded(frameWidthPx, frameHeightPx) {
     if (!rulerState.x && !rulerState.y) {
       rulerState.x = frameWidthPx / 2;
@@ -423,32 +450,44 @@
   function updateRulerGraphics(options = {}) {
     if (ruler.classList.contains('hidden')) return;
     const thickness = RULER_THICKNESS;
-    const { anchorPx = null, anchorAxis = null } = options;
-    const lengthPx = Math.max(50, rulerState.lengthMm * pxPerMm);
     const frameRect = frame.getBoundingClientRect();
-    const maxLengthPx = (rulerState.vertical ? frameRect.height : frameRect.width) - 20;
-    const limitedLengthPx = Math.min(lengthPx, maxLengthPx);
-    rulerState.lengthMm = limitedLengthPx / pxPerMm;
+    const axisSpan = rulerState.vertical ? frameRect.height : frameRect.width;
+    const baseLengthPx = typeof options.requestedLengthPx === 'number'
+      ? options.requestedLengthPx
+      : rulerState.lengthMm * pxPerMm;
+    const minLengthPx = 40;
+    let desiredLengthPx = Math.max(minLengthPx, baseLengthPx);
+    let startEdgePx = typeof options.startEdgePx === 'number' ? options.startEdgePx : null;
 
-    if (anchorPx !== null) {
-      const shouldApplyAnchor = (anchorAxis === 'y' && rulerState.vertical) || (anchorAxis === 'x' && !rulerState.vertical);
-      if (shouldApplyAnchor) {
-        const spanPx = rulerState.lengthMm * pxPerMm;
-        if (rulerState.vertical) {
-          rulerState.y = anchorPx - spanPx / 2;
-        } else {
-          rulerState.x = anchorPx - spanPx / 2;
-        }
+    if (startEdgePx !== null) {
+      startEdgePx = Math.max(0, Math.min(startEdgePx, axisSpan));
+      const availablePx = Math.max(0, axisSpan - startEdgePx);
+      desiredLengthPx = Math.min(desiredLengthPx, availablePx);
+      if (desiredLengthPx > availablePx) {
+        desiredLengthPx = availablePx;
+      }
+    } else {
+      desiredLengthPx = Math.min(desiredLengthPx, Math.max(minLengthPx, axisSpan - 20));
+    }
+
+    rulerState.lengthMm = desiredLengthPx / pxPerMm;
+
+    if (startEdgePx !== null) {
+      const newCenter = startEdgePx + desiredLengthPx / 2;
+      if (rulerState.vertical) {
+        rulerState.y = newCenter;
+      } else {
+        rulerState.x = newCenter;
       }
     }
 
     if (rulerState.vertical) {
       ruler.classList.add('vertical');
       ruler.style.width = `${thickness}px`;
-      ruler.style.height = `${limitedLengthPx}px`;
+      ruler.style.height = `${desiredLengthPx}px`;
     } else {
       ruler.classList.remove('vertical');
-      ruler.style.width = `${limitedLengthPx}px`;
+      ruler.style.width = `${desiredLengthPx}px`;
       ruler.style.height = `${thickness}px`;
     }
 
@@ -461,11 +500,12 @@
 
     rulerLabels.innerHTML = '';
     const cmCount = Math.floor(rulerState.lengthMm / 10);
-    for (let i = 0; i <= cmCount; i++) {
+    const startLabel = rulerState.vertical ? 1 : 0;
+    for (let i = startLabel; i <= cmCount; i++) {
       const span = document.createElement('span');
       span.textContent = i.toString();
       if (rulerState.vertical) {
-        span.style.bottom = `${i * 10 * pxPerMm - 4}px`;
+        span.style.top = `${i * 10 * pxPerMm - 8}px`;
       } else {
         span.style.left = `${i * 10 * pxPerMm + 4}px`;
       }
@@ -485,6 +525,15 @@
 
   function handleFile(file) {
     if (!file) return;
+    if (file.name) {
+      const dotIndex = file.name.lastIndexOf('.');
+      const rawName = dotIndex > 0 ? file.name.slice(0, dotIndex) : file.name;
+      uploadedFileBase = rawName.trim().replace(/\s+/g, '_');
+    } else {
+      uploadedFileBase = '';
+    }
+    exportBtn.disabled = true;
+    recenterBtn.disabled = true;
     const reader = new FileReader();
     reader.onload = (e) => {
       photo.src = e.target.result;
@@ -492,35 +541,33 @@
     reader.readAsDataURL(file);
   }
 
+  function getFormatLabel() {
+    if (sizeSelect.value === 'custom') {
+      const width = Math.round(parseFloat(customWidthInput.value) || frameWidthMM);
+      const height = Math.round(parseFloat(customHeightInput.value) || frameHeightMM);
+      return `${width}x${height}`;
+    }
+    return sizeSelect.value;
+  }
+
   photo.addEventListener('load', () => {
-    const frameRect = frame.getBoundingClientRect();
     photoNatural.width = photo.naturalWidth;
     photoNatural.height = photo.naturalHeight;
-    const ratio = photoNatural.width / photoNatural.height;
-    const frameRatio = frameRect.width / frameRect.height;
-    let width, height;
-    if (frameRatio > ratio) {
-      height = frameRect.height;
-      width = height * ratio;
-    } else {
-      width = frameRect.width;
-      height = width / ratio;
-    }
-    photoState = {
-      x: (frameRect.width - width) / 2,
-      y: (frameRect.height - height) / 2,
-      width,
-      height
-    };
     photoWrapper.classList.remove('hidden');
-    applyPhotoState();
+    fitPhotoToFrame();
     exportBtn.disabled = false;
+    recenterBtn.disabled = false;
     ruler.classList.remove('hidden');
     resetRuler();
   });
 
   uploadBtn.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+  recenterBtn.addEventListener('click', () => {
+    if (!photoWrapper.classList.contains('hidden')) {
+      fitPhotoToFrame();
+    }
+  });
 
   sizeSelect.addEventListener('change', updateFrameDimensions);
   rotatePage.addEventListener('change', updateFrameDimensions);
@@ -668,22 +715,23 @@
   rulerResize.addEventListener('pointerdown', (event) => {
     event.stopPropagation();
     event.preventDefault();
+    const currentLengthPx = rulerState.lengthMm * pxPerMm;
+    const startEdgePx = rulerState.vertical
+      ? rulerState.y - currentLengthPx / 2
+      : rulerState.x - currentLengthPx / 2;
     const start = {
       pointerId: event.pointerId,
-      length: rulerState.lengthMm,
-      pos: rulerState.vertical ? event.clientY : event.clientX,
-      anchorAxis: rulerState.vertical ? 'y' : 'x',
-      anchor: rulerState.vertical
-        ? rulerState.y + ruler.offsetHeight / 2
-        : rulerState.x + ruler.offsetWidth / 2
+      startPos: rulerState.vertical ? event.clientY : event.clientX,
+      requestedLengthPx: currentLengthPx,
+      startEdgePx
     };
     rulerResize.setPointerCapture(event.pointerId);
     const move = (ev) => {
       if (ev.pointerId !== start.pointerId) return;
-      const delta = (rulerState.vertical ? ev.clientY : ev.clientX) - start.pos;
-      const deltaMm = delta / pxPerMm;
-      rulerState.lengthMm = Math.max(10, start.length + deltaMm);
-      updateRulerGraphics({ anchorPx: start.anchor, anchorAxis: start.anchorAxis });
+      const pointerPos = rulerState.vertical ? ev.clientY : ev.clientX;
+      const deltaPx = pointerPos - start.startPos;
+      const nextLengthPx = Math.max(20, start.requestedLengthPx + deltaPx);
+      updateRulerGraphics({ startEdgePx: start.startEdgePx, requestedLengthPx: nextLengthPx });
     };
     const up = (ev) => {
       if (ev.pointerId !== start.pointerId) return;
@@ -728,7 +776,9 @@
 
     canvas.toBlob((blob) => {
       const link = document.createElement('a');
-      link.download = 'scaled-photo.png';
+      const formatLabel = getFormatLabel();
+      const downloadBase = uploadedFileBase || 'scaled-photo';
+      link.download = `${downloadBase}_${formatLabel}.png`;
       link.href = URL.createObjectURL(blob);
       link.click();
       setTimeout(() => URL.revokeObjectURL(link.href), 1000);
